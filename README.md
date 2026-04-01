@@ -1,6 +1,15 @@
-# 🔬 HAM10000 — Skin Lesion Classification with MobileNetV2
+# 🔬 SkinAI — Skin Lesion Classification with Deep Learning Ensemble
 
-A deep learning project for multi-class classification of dermoscopic skin lesion images using transfer learning with MobileNetV2. Built with TensorFlow/Keras on the HAM10000 dataset.
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-orange.svg)](https://tensorflow.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B.svg)](https://streamlit.io)
+[![Dataset](https://img.shields.io/badge/Dataset-HAM10000-green.svg)](https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000)
+
+An end-to-end deep learning pipeline for classifying 7 types of skin lesions from dermatoscopic images. The system combines **U-Net segmentation** with an **ensemble of 3 CNN classifiers** and is deployed as an interactive **Streamlit web application**.
+
+<p align="center">
+  <img src="assets/demo.png" alt="SkinAI Demo" width="800"/>
+</p>
 
 ---
 
@@ -8,253 +17,323 @@ A deep learning project for multi-class classification of dermoscopic skin lesio
 
 - [Overview](#overview)
 - [Dataset](#dataset)
-- [Project Structure](#project-structure)
-- [Methodology](#methodology)
-  - [Data Preprocessing & Balancing](#data-preprocessing--balancing)
-  - [Augmentation](#augmentation)
-  - [Model Architecture](#model-architecture)
-  - [Training Configuration](#training-configuration)
+- [Architecture](#architecture)
 - [Results](#results)
-- [Visualizations](#visualizations)
-- [Inference](#inference)
-- [Requirements](#requirements)
-- [How to Run](#how-to-run)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Project Structure](#project-structure)
+- [Training](#training)
+- [Web Application](#web-application)
 - [Future Work](#future-work)
-- [Disclaimer](#disclaimer)
 
 ---
 
 ## Overview
 
-Skin cancer is among the most common cancers globally, and early detection is critical for successful treatment. This project aims to classify dermoscopic images into **7 diagnostic categories** using a convolutional neural network based on **MobileNetV2** with transfer learning from ImageNet.
+Skin cancer is one of the most common cancers worldwide. Early detection of melanoma and other malignant lesions dramatically improves survival rates. This project builds an AI-assisted screening tool that:
 
-| Code | Diagnosis | Type |
-|------|-----------|------|
-| **MEL** | Melanoma | Malignant |
-| **NV** | Melanocytic nevi | Benign |
-| **BCC** | Basal cell carcinoma | Malignant |
-| **AKIEC** | Actinic keratoses | Pre-malignant |
-| **BKL** | Benign keratosis | Benign |
-| **DF** | Dermatofibroma | Benign |
-| **VASC** | Vascular lesions | Benign |
+1. **Segments** the lesion from the background using a U-Net model
+2. **Classifies** the lesion into one of 7 categories using 3 diverse CNN models
+3. **Combines** predictions via an optimized weighted average ensemble
+4. **Deploys** the full pipeline as an interactive web app with risk assessment
 
 ---
 
 ## Dataset
 
-**HAM10000** (*Human Against Machine with 10,000 training images*) — a large-scale benchmark dataset for dermatoscopic image analysis.
+**HAM10000** (*Human Against Machine with 10000 training images*) — a large collection of dermatoscopic images from different populations, acquired and stored by different modalities.
 
-- **Source:** [ISIC Archive](https://www.isic-archive.com/) via [Kaggle](https://www.kaggle.com/datasets/surajghuwalewala/ham1000-segmentation-and-classification)
-- **Total images:** 10,015
-- **Image resolution:** Variable (~600×450), resized to 224×224
-- **Labels:** One-hot encoded across 7 classes in `GroundTruth.csv`
+| Class | Full Name | Samples | Type |
+|-------|-----------|---------|------|
+| NV | Melanocytic Nevi | 6,705 | Benign |
+| MEL | Melanoma | 1,113 | **Malignant** |
+| BKL | Benign Keratosis | 1,099 | Benign |
+| BCC | Basal Cell Carcinoma | 514 | **Malignant** |
+| AKIEC | Actinic Keratoses | 327 | Precancerous |
+| VASC | Vascular Lesions | 142 | Benign |
+| DF | Dermatofibroma | 115 | Benign |
 
-### Class Distribution (Original)
+**Total: 10,015 images** with ground truth confirmed by histopathology, expert consensus, or follow-up examination.
 
-| Class | Count | Share |
-|-------|-------|-------|
-| NV | 6,705 | 66.9% |
-| MEL | 1,113 | 11.1% |
-| BKL | 1,099 | 11.0% |
-| BCC | 514 | 5.1% |
-| AKIEC | 327 | 3.3% |
-| VASC | 142 | 1.4% |
-| DF | 115 | 1.1% |
+### Handling Class Imbalance
 
-**Imbalance ratio:** 58.3× (NV vs DF) — severe class imbalance that required dedicated handling.
+- NV (majority class) capped at 1,500 samples during training
+- **Focal Loss** (γ=2, label smoothing=0.1) to focus on hard/rare examples
+- **GroupShuffleSplit** by `lesion_id` to prevent data leakage (same lesion never in both train and test)
+- Split: 70% train / 15% validation / 15% test
 
 ---
 
-## Methodology
+## Architecture
 
-### Data Preprocessing & Balancing
-
-The severe class imbalance was addressed with a combined strategy:
-
-1. **Downsampling** the dominant class: NV reduced from 6,705 → 800 (random sample)
-2. **Oversampling** rare classes with replacement: DF, VASC, AKIEC, BCC increased to 800
-3. **Keeping** medium-sized classes as-is: MEL (1,113), BKL (1,099)
-
-**Balanced dataset:** 6,212 samples
-
-**Data split** (stratified):
-
-| Split | Samples | Share |
-|-------|---------|-------|
-| Train | 4,348 | 70% |
-| Validation | 932 | 15% |
-| Test | 932 | 15% |
-
-Additionally, **class weights** (inversely proportional to class frequency) were applied during training to further mitigate residual imbalance.
-
-### Augmentation
-
-Real-time augmentation was applied to training data only via `ImageDataGenerator`:
-
-| Augmentation | Parameter |
-|-------------|-----------|
-| Rotation | ±30° |
-| Width/Height shift | ±10% |
-| Shear | 0.1 |
-| Zoom | ±10% |
-| Horizontal flip | Yes |
-| Vertical flip | Yes |
-| Brightness | [0.8, 1.2] |
-| Fill mode | Nearest |
-
-### Model Architecture
-
-**Transfer learning** with MobileNetV2 pretrained on ImageNet:
+The pipeline consists of two stages: segmentation and classification.
 
 ```
-Input (224×224×3)
-    │
-    ▼
-MobileNetV2 (all layers trainable, GlobalAveragePooling)
-    │
-    ▼
-BatchNormalization (momentum=0.99, epsilon=0.001)
-    │
-    ▼
-Dense (256 units, ReLU activation)
-    │
-    ▼
-Dropout (rate=0.45)
-    │
-    ▼
-Dense (7 units, Softmax activation)
-    │
-    ▼
-Output: 7-class probability distribution
+                          ┌──────────────────────────┐
+                          │    Input Image (RGB)      │
+                          └────────────┬─────────────┘
+                                       │
+                          ┌────────────▼─────────────┐
+                          │   U-Net Segmentation      │
+                          │   (EfficientNetV2B2)      │
+                          │   Dice: 0.943 | IoU: 0.897│
+                          └────────────┬─────────────┘
+                                       │
+              ┌────────────────────────┼────────────────────────┐
+              │                        │                        │
+    ┌─────────▼──────────┐  ┌─────────▼──────────┐  ┌─────────▼──────────┐
+    │  Model 1            │  │  Model 2            │  │  Model 3            │
+    │  EfficientNetV2B2   │  │  ConvNeXtTiny       │  │  DenseNet121        │
+    │  Raw RGB (260×260)  │  │  Segmented (224×224) │  │  4ch RGB+Mask       │
+    │  F1: 0.699          │  │  F1: 0.681          │  │  (224×224×4)        │
+    │                     │  │                     │  │  F1: 0.635          │
+    └─────────┬──────────┘  └─────────┬──────────┘  └─────────┬──────────┘
+              │                        │                        │
+              └────────────────────────┼────────────────────────┘
+                                       │
+                          ┌────────────▼─────────────┐
+                          │  Weighted Average Ensemble │
+                          │  F1 Macro: 0.749          │
+                          │  Accuracy: 84.0%          │
+                          │  AUC: 0.965               │
+                          └──────────────────────────┘
 ```
 
-**Total parameters:** 2,592,839
+### Segmentation: U-Net
 
-### Training Configuration
+- **Encoder:** EfficientNetV2B2 (ImageNet pretrained)
+- **Decoder:** Transposed convolutions with skip connections
+- **Loss:** BCE + Dice combined
+- **Training:** Two-stage (freeze encoder → fine-tune all)
+- **Augmentations:** Synced transforms on image + mask (flip, rotate, elastic, brightness)
 
-| Parameter | Value |
-|-----------|-------|
-| Optimizer | Adamax |
-| Initial learning rate | 0.001 |
-| LR schedule | Custom LRA callback (factor=0.5 on plateau) |
-| Loss function | Categorical cross-entropy |
-| Class weights | Yes (inversely proportional) |
-| Batch size | 40 |
-| Max epochs | 40 |
-| Patience (LR reduction) | 2 epochs |
-| Patience (early stopping) | 5 epochs |
-| Preprocessing | `mobilenet_v2.preprocess_input` (scales pixels to [-1, 1]) |
+### Model 1: EfficientNetV2B2
 
-The **LRA (Learning Rate Adjustment)** callback monitors both training and validation metrics, reduces the learning rate when progress stalls, and implements early stopping.
+- **Input:** 260×260 raw RGB
+- **Augmentations:** Flip, rotate, brightness, contrast, HSV shift, CoarseDropout
+- **Training:** Two-stage + CosineDecay LR schedule
+- **Inference:** Test-Time Augmentation (TTA, 8 views)
+
+### Model 2: ConvNeXtTiny + Segmentation
+
+- **Input:** 224×224 segmented image (background removed via U-Net mask)
+- **Preprocessing:** U-Net mask → Gaussian blur → multiply with RGB
+- **Idea:** Force the model to focus exclusively on the lesion
+
+### Model 3: DenseNet121 (4-Channel)
+
+- **Input:** 224×224×4 (R, G, B, Segmentation Mask)
+- **Preprocessing:** Modified first conv layer to accept 4 channels
+- **Idea:** Let the model learn how to use the mask information itself
+
+### Ensemble: Weighted Average
+
+Optimal weights found via Nelder-Mead optimization on the validation set:
+
+```
+Final prediction = w₁·Model1 + w₂·Model2 + w₃·Model3
+```
+
+Compared approaches: Logistic Regression, XGBoost, Neural Network, Simple Average, Weighted Average. **Weighted Average won** with the best F1 Macro score.
 
 ---
 
 ## Results
 
-### Test Set Performance
+### Individual Models vs Ensemble
 
-| Metric | Value |
+| Method | Accuracy | F1 Macro | AUC Macro |
+|--------|----------|----------|-----------|
+| Model 1 — EfficientNetV2B2 | 82.2% | 0.699 | 0.953 |
+| Model 2 — ConvNeXtTiny + Seg | 80.8% | 0.681 | 0.948 |
+| Model 3 — DenseNet121 4ch | 79.4% | 0.635 | 0.943 |
+| Meta: Logistic Regression | 83.6% | 0.709 | 0.959 |
+| Meta: XGBoost | 81.9% | 0.703 | 0.959 |
+| Meta: Neural Network | 82.6% | 0.724 | 0.957 |
+| Simple Average | 83.9% | 0.748 | 0.965 |
+| **Weighted Average** | **84.0%** | **0.749** | **0.965** |
+
+### Per-Class Performance (Weighted Average Ensemble)
+
+| Class | Precision | Recall | F1-Score | Support |
+|-------|-----------|--------|----------|---------|
+| AKIEC | 0.63 | 0.50 | 0.56 | 48 |
+| BCC | 0.66 | 0.89 | 0.76 | 66 |
+| BKL | 0.69 | 0.70 | 0.70 | 172 |
+| DF | 0.89 | 0.80 | 0.84 | 10 |
+| MEL | 0.70 | 0.54 | 0.61 | 186 |
+| NV | 0.90 | 0.93 | 0.92 | 1,016 |
+| VASC | 0.92 | 0.79 | 0.85 | 29 |
+
+### Segmentation Performance
+
+| Metric | Score |
 |--------|-------|
-| **Accuracy** | **79.08%** |
-| **F1-macro** | **0.8053** |
-| **F1-weighted** | **0.7888** |
-
-### Key Findings
-
-- The model performs best on visually distinctive classes (VASC, NV)
-- Hardest classes are those sharing visual features: AKIEC vs BCC, MEL vs BKL
-- Confusion patterns are clinically plausible — even dermatologists find these distinctions challenging
-- Grad-CAM confirms the model focuses on lesion regions, not on background artifacts or skin texture
+| Dice Coefficient | 0.943 ± 0.064 |
+| IoU (Jaccard) | 0.897 ± 0.095 |
 
 ---
 
-## Visualizations
+## Installation
 
-The notebook produces the following visualizations:
+### Requirements
 
-| Visualization | Description |
-|--------------|-------------|
-| Class distribution | Bar chart + pie chart of original dataset |
-| Sample images | One example per class |
-| Augmented samples | Examples of augmented training images |
-| Training curves | Loss and accuracy over epochs (train vs validation) |
-| Confusion matrix | Absolute values + normalized (per-class recall) |
-| Per-class metrics | Grouped bar chart: Precision, Recall, F1 per class |
-| Grad-CAM heatmaps | Attention maps for each class showing what the model "sees" |
-| Error analysis | 12 most confident misclassifications |
-
----
-
-## Inference
-
-The notebook includes a `predict_skin_lesion()` function for single-image inference:
-
-```python
-predict_skin_lesion("path/to/image.jpg", top_k=3)
-```
-
-**Output:**
-- Top-K predicted classes with confidence scores
-- Original image alongside a bar chart of class probabilities
-- Grad-CAM overlay showing the attention region
-
----
-
-## Requirements
-
-```
-tensorflow >= 2.19
-numpy
-pandas
-matplotlib
-seaborn
-scikit-learn
-opencv-python
-Pillow
-kagglehub
-```
-
-### Installation
+- Python 3.10+
+- TensorFlow 2.x
+- Streamlit
 
 ```bash
-pip install tensorflow numpy pandas matplotlib seaborn scikit-learn opencv-python Pillow kagglehub
+git clone https://github.com/ArDangerUS/SkinAI.git
+cd SkinAI
+pip install -r requirements.txt
+```
+
+### Dependencies
+
+```
+tensorflow>=2.15
+streamlit>=1.30
+numpy
+pandas
+opencv-python-headless
+Pillow
+scikit-learn
+albumentations
+matplotlib
+seaborn
 ```
 
 ---
 
-## How to Run
+## Usage
 
-1. **Clone / download** this repository
-2. **Open** `HAM10000_Classification_v3.ipynb` in Jupyter Notebook or Google Colab
-3. **Run all cells** sequentially — the dataset will be automatically downloaded via `kagglehub`
-4. The trained model will be saved as `ham10000_mobilenetv2.keras` and `ham10000_mobilenetv2.h5`
-5. Use the inference cell at the end to classify new images
+### Web Application
 
-> **Note:** Training was performed on CPU. For faster training, use a GPU runtime (Colab GPU or local CUDA-enabled GPU).
+```bash
+streamlit run app.py
+```
+
+Then open `http://localhost:8501` in your browser. Upload a dermatoscopic image and get:
+- Segmentation overlay visualization
+- Classification with risk level (benign / precancerous / malignant)
+- Per-class probability distribution
+- Per-model agreement check
+
+### Quick Inference (Python)
+
+```python
+import numpy as np
+import cv2
+import tensorflow as tf
+
+# Load models
+seg_model = tf.keras.models.load_model("models/segmentation_unet.keras", custom_objects={...})
+clf_v4 = tf.keras.models.load_model("models/v4_efficientnet.keras", custom_objects={...})
+clf_v5 = tf.keras.models.load_model("models/v5_convnext_seg.keras", custom_objects={...})
+clf_v6 = tf.keras.models.load_model("models/v6_densenet_4ch.keras", custom_objects={...})
+
+# Predict
+img = cv2.cvtColor(cv2.imread("lesion.jpg"), cv2.COLOR_BGR2RGB)
+mask = predict_mask(seg_model, img)
+p1 = predict_v4(clf_v4, img)
+p2 = predict_v5(clf_v5, img, mask)
+p3 = predict_v6(clf_v6, img, mask)
+
+# Ensemble
+ensemble = 0.4 * p1 + 0.3 * p2 + 0.3 * p3  # approximate weights
+classes = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
+print(f"Prediction: {classes[np.argmax(ensemble)]}, confidence: {np.max(ensemble):.2%}")
+```
+
+---
+
+## Project Structure
+
+```
+SkinAI/
+├── app.py                          # Streamlit web application
+├── models/                         # Trained model weights
+│   ├── segmentation_unet.keras     # U-Net segmentation model
+│   ├── v4_efficientnet.keras       # Model 1: EfficientNetV2B2
+│   ├── v5_convnext_seg.keras       # Model 2: ConvNeXtTiny
+│   └── v6_densenet_4ch.keras       # Model 3: DenseNet121 4-channel
+├── notebooks/
+│   ├── model1.ipynb                # EfficientNetV2B2 training
+│   ├── model1_prep.ipynb           # Model 1 prediction extraction
+│   ├── model2.ipynb                # ConvNeXtTiny + segmentation training
+│   ├── model3.ipynb                # DenseNet121 4-channel training
+│   ├── segmentation.ipynb          # U-Net segmentation training
+│   └── ensemble.ipynb              # Meta-learner comparison & final ensemble
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Training
+
+All models were trained in **Google Colab** (T4 / A100 GPU). Training notebooks are in the `notebooks/` directory.
+
+### Reproduction Steps
+
+1. **Segmentation:** Run `segmentation.ipynb` to train U-Net and save the model
+2. **Model 1:** Run `model1.ipynb` — trains EfficientNetV2B2 on raw RGB images
+3. **Model 2:** Run `model2.ipynb` — uses U-Net masks to segment images before classification
+4. **Model 3:** Run `model3.ipynb` — trains DenseNet121 with 4-channel (RGB + mask) input
+5. **Ensemble:** Run `ensemble.ipynb` — loads predictions from all 3 models, compares meta-learners, selects best
+
+### Key Training Details
+
+| Parameter | Value |
+|-----------|-------|
+| Optimizer | Adam |
+| Loss | Focal Loss (γ=2, label smoothing=0.1) |
+| LR Schedule | CosineDecay |
+| Training Strategy | Two-stage (freeze → fine-tune) |
+| Augmentation Library | Albumentations |
+| Early Stopping | Patience 7 (monitor: val_accuracy) |
+| TTA | 8 augmented views at inference |
+
+---
+
+## Web Application
+
+The Streamlit app (`app.py`) provides a complete diagnostic interface:
+
+| Feature | Description |
+|---------|-------------|
+| Image Upload | JPG, PNG, BMP support |
+| Segmentation | Real-time U-Net overlay with lesion boundary |
+| Classification | 3-model ensemble with per-class probabilities |
+| Risk Assessment | Color-coded: 🟢 Benign, ⚠️ Precancerous, 🔴 Malignant |
+| Model Agreement | Shows if all 3 models agree on the diagnosis |
+| Bilingual | Ukrainian + English disease names |
+
+> ⚠️ **Disclaimer:** This tool is for educational purposes only and is NOT a medical diagnosis. Always consult a dermatologist.
 
 ---
 
 ## Future Work
 
-- [ ] Compare with other architectures (EfficientNetB0, ResNet50)
-- [ ] Implement focal loss for hard example mining
-- [ ] Add advanced augmentation techniques (Cutout, MixUp, CutMix)
-- [ ] Compute per-class ROC curves and AUC scores
-- [ ] Build an interactive demo with Gradio or Streamlit
-- [ ] Explore SMOTE-style augmentation in feature space
-- [ ] Optimize for mobile deployment (TFLite conversion)
+- Fine-tune each model with extended training and learning rate search
+- Add more architectures to the ensemble (ViT, Swin Transformer)
+- Improve segmentation with higher resolution and attention mechanisms
+- Implement CutMix / MixUp augmentation strategies
+- Use external data sources for rare classes (DF, VASC, AKIEC)
+- Improve melanoma recall (currently 0.54) with class-specific loss weighting
+- Deploy as a mobile-friendly PWA for field use by dermatologists
 
 ---
 
-## Disclaimer
+## Acknowledgments
 
-⚠️ **This project is for educational and research purposes only.** The model is **NOT** a medical diagnostic tool. Always consult a qualified dermatologist for skin lesion evaluation. Do not use this model to make clinical decisions.
+- [HAM10000 Dataset](https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000) by Philipp Tschandl et al.
+- [HAM10000 Segmentation Masks](https://www.kaggle.com/datasets/surajghuwalewala/ham1000-segmentation-and-classification)
+- TensorFlow / Keras for model development
+- Streamlit for web application framework
 
 ---
 
-## Author
+## License
 
-**Artem** — Applied Mathematics, NaUKMA
-**Danylo** — Applied Mathematics, NaUKMA
-
-Machine Learning course project, 2026
+This project is for educational and research purposes. The HAM10000 dataset has its own [license terms](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/DBW86T).
