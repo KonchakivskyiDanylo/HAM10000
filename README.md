@@ -66,34 +66,32 @@ Skin cancer is one of the most common cancers worldwide. Early detection of mela
 The pipeline consists of two stages: segmentation and classification.
 
 ```
-                          ┌──────────────────────────┐
-                          │    Input Image (RGB)      │
-                          └────────────┬─────────────┘
-                                       │
-                          ┌────────────▼─────────────┐
-                          │   U-Net Segmentation      │
-                          │   (EfficientNetV2B2)      │
-                          │   Dice: 0.943 | IoU: 0.897│
-                          └────────────┬─────────────┘
-                                       │
-              ┌────────────────────────┼────────────────────────┐
-              │                        │                        │
-    ┌─────────▼──────────┐  ┌─────────▼──────────┐  ┌─────────▼──────────┐
-    │  Model 1            │  │  Model 2            │  │  Model 3            │
-    │  EfficientNetV2B2   │  │  ConvNeXtTiny       │  │  DenseNet121        │
-    │  Raw RGB (260×260)  │  │  Segmented (224×224) │  │  4ch RGB+Mask       │
-    │  F1: 0.699          │  │  F1: 0.681          │  │  (224×224×4)        │
-    │                     │  │                     │  │  F1: 0.635          │
-    └─────────┬──────────┘  └─────────┬──────────┘  └─────────┬──────────┘
-              │                        │                        │
-              └────────────────────────┼────────────────────────┘
-                                       │
-                          ┌────────────▼─────────────┐
+                     ┌───────────────────────────┐
+                     │    Input Image (RGB)      │
+                     └──────┬─────────┬──────────┘
+                            │         │
+                            │  ┌──────▼────────────────────┐
+                            │  │   U-Net Segmentation      │
+                            │  │   (EfficientNetV2B2)      │
+                            │  │   Dice: 0.943 | IoU: 0.897│
+                            │  └──────┬──────────┬─────────┘
+                            │         │          │
+               ┌────────────▼────┐  ┌───▼─────────┐ │ ┌────────────────┐
+               │  Model 1        │  │  Model 2    │ └►│  Model 3       │
+               │ EfficientNetV2B2│  │ ConvNeXtTiny│   │ DenseNet121    │
+               │ Raw RGB         │  │ Segmented   │   │ 4ch RGB+Mask   │
+               │ (260×260)       │  │ (224×224)   │   │ (224×224×4)    │
+               │ F1: 0.699       │  │ F1: 0.681   │   │ F1: 0.635      │
+               └───────┬─────────┘  └─────┬───────┘   └───────┬────────┘
+                       │                  │                   │
+                       └──────────────────┼───────────────────┘
+                                          │
+                          ┌───────────────▼────────────┐
                           │  Weighted Average Ensemble │
-                          │  F1 Macro: 0.749          │
-                          │  Accuracy: 84.0%          │
-                          │  AUC: 0.965               │
-                          └──────────────────────────┘
+                          │  F1 Macro: 0.749           │
+                          │  Accuracy: 84.0%           │
+                          │  AUC: 0.965                │
+                          └────────────────────────────┘
 ```
 
 ### Segmentation: U-Net
@@ -180,8 +178,8 @@ Compared approaches: Logistic Regression, XGBoost, Neural Network, Simple Averag
 - Streamlit
 
 ```bash
-git clone https://github.com/ArDangerUS/SkinAI.git
-cd SkinAI
+git clone https://github.com/KonchakivskyiDanylo/HAM10000.git
+cd HAM10000
 pip install -r requirements.txt
 ```
 
@@ -319,6 +317,8 @@ The Streamlit app (`app.py`) provides a complete diagnostic interface:
 - Use external data sources for rare classes (DF, VASC, AKIEC)
 - Improve melanoma recall (currently 0.54) with class-specific loss weighting
 - Deploy as a mobile-friendly PWA for field use by dermatologists
+- Add input validation to reject non-dermatoscopic images (e.g., photos of everyday objects), 
+  as the current pipeline will produce a confident but meaningless diagnosis for any image
 
 ---
 
