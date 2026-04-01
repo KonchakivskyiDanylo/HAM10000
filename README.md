@@ -7,9 +7,6 @@
 
 An end-to-end deep learning pipeline for classifying 7 types of skin lesions from dermatoscopic images. The system combines **U-Net segmentation** with an **ensemble of 3 CNN classifiers** and is deployed as an interactive **Streamlit web application**.
 
-<p align="center">
-  <img src="[assets/demo.png](https://skindiseaseai.streamlit.app/)" alt="[SkinAI Demo](https://skindiseaseai.streamlit.app/)" width="800"/>
-</p>
 
 ---
 
